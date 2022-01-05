@@ -55,7 +55,7 @@ bool MatchesPattern(const std::string& pattern,
 
 }  // namespace
 
-void DecodeComments(const std::vector<unsigned char>& buffer, int buffer_idx) {
+bool DecodeComments(const std::vector<unsigned char>& buffer, int buffer_idx) {
   buffer_idx += kOpusCommentHeader.length();  // skip header
   unsigned int bytes_remaining = buffer.size() - buffer_idx;
   if (bytes_remaining > 4) {
@@ -110,9 +110,12 @@ void DecodeComments(const std::vector<unsigned char>& buffer, int buffer_idx) {
             }
           }
         }
+
+        return true;
       }
     }
   }
+  return false;
 }
 
 void DecodeOggPage(int page_num, std::vector<unsigned char> page) {
@@ -137,20 +140,18 @@ void DecodeOggStream(std::vector<unsigned char>& buffer) {
       if (MatchesPattern(kOggCapturePattern, buffer, idx)) {
         std::cout << "PAGE:" << current_page << std::endl;
 
+        uint32_t bsserial = buffer[idx + 14] | (buffer[idx + 15] << 8) |
+                            (buffer[idx + 16] << 16) | (buffer[idx + 17] << 24);
         std::stringstream ss_bs;
-        ss_bs << std::hex << static_cast<unsigned int>(buffer[idx + 17])
-              << std::hex << static_cast<unsigned int>(buffer[idx + 16])
-              << std::hex << static_cast<unsigned int>(buffer[idx + 15])
-              << std::hex << static_cast<unsigned int>(buffer[idx + 14]);
+        ss_bs << std::hex << bsserial;
         std::string bitstream_serial = ss_bs.str();
-
         std::cout << "BITSTREAM SERIAl:" << bitstream_serial << std::endl;
 
+        uint32_t seq_bytes = buffer[idx + 18] | (buffer[idx + 19] << 8) |
+                             (buffer[idx + 20] << 16) |
+                             (buffer[idx + 21] << 24);
         std::stringstream ss_sq;
-        ss_sq << std::hex << static_cast<unsigned int>(buffer[idx + 21])
-              << std::hex << static_cast<unsigned int>(buffer[idx + 20])
-              << std::hex << static_cast<unsigned int>(buffer[idx + 19])
-              << std::hex << static_cast<unsigned int>(buffer[idx + 18]);
+        ss_sq << std::hex << seq_bytes;
         std::string page_sequence_number = ss_sq.str();
         std::cout << "PAGESEQ:" << page_sequence_number << std::endl;
 
@@ -186,9 +187,10 @@ void DecodeOggStream(std::vector<unsigned char>& buffer) {
         } else if (have_header_page &&
                    MatchesPattern(kOpusCommentHeader, buffer, data_start_idx)) {
           std::cout << "**COMMENT IDX!\n";
-          have_comment_page = true;
-          DecodeComments(buffer, data_start_idx);
-        } else {  // data pages
+          if (DecodeComments(buffer, data_start_idx)) {
+            have_comment_page = true;
+          }
+        } else if (have_comment_page) {  // data pages
           std::cout << "**DATA PAGES!\n";
         }
 
