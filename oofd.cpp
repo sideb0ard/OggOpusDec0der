@@ -38,6 +38,7 @@ const std::string kOpusCommentHeader{"OpusTags"};
 const int kMinHeaderSize = 27;
 const int kPageSegmentField = kMinHeaderSize - 1;
 
+namespace {
 // searches for pattern string in the buffer reference starting at buffer_idx.
 // Used for looking for various Magic Ids in Ogg bistream without
 // copying values.
@@ -52,6 +53,68 @@ bool MatchesPattern(const std::string& pattern,
   return true;
 }
 
+}  // namespace
+
+void DecodeComments(const std::vector<unsigned char>& buffer, int buffer_idx) {
+  buffer_idx += kOpusCommentHeader.length();  // skip header
+  unsigned int bytes_remaining = buffer.size() - buffer_idx;
+  if (bytes_remaining > 4) {
+    // vendor string len is 4 bytes, little endian
+    uint32_t vendor_string_len =
+        buffer[buffer_idx] | (buffer[buffer_idx + 1] << 8) |
+        (buffer[buffer_idx + 2] << 16) | (buffer[buffer_idx + 3] << 24);
+    std::cout << "VENDOR STRING LEN:" << vendor_string_len << std::endl;
+
+    buffer_idx += 4;
+    bytes_remaining = buffer.size() - buffer_idx;
+
+    if (bytes_remaining > vendor_string_len) {
+      std::string vendor_string(
+          buffer.begin() + buffer_idx,
+          buffer.begin() + buffer_idx + vendor_string_len);
+      std::cout << "VENDOR STRNG:" << vendor_string << std::endl;
+
+      buffer_idx += vendor_string_len;
+      bytes_remaining = buffer.size() - buffer_idx;
+
+      if (bytes_remaining > 4) {
+        // user comment list len is 4 bytes, little endian
+        uint32_t user_comment_list_len =
+            buffer[buffer_idx] | (buffer[buffer_idx + 1] << 1) |
+            (buffer[buffer_idx + 2] << 16) | (buffer[buffer_idx + 3] << 24);
+        std::cout << "Num user comments:" << user_comment_list_len << std::endl;
+
+        buffer_idx += 4;
+        bytes_remaining = buffer.size() - buffer_idx;
+
+        for (int i = 0; i < user_comment_list_len; i++) {
+          if (bytes_remaining > 4) {
+            uint32_t comment_i_len =
+                buffer[buffer_idx] | (buffer[buffer_idx + 1] << 1) |
+                (buffer[buffer_idx + 2] << 16) | (buffer[buffer_idx + 3] << 24);
+            std::cout << "user comment " << i << "len:" << comment_i_len
+                      << std::endl;
+
+            buffer_idx += 4;
+            bytes_remaining = buffer.size() - buffer_idx;
+            std::cout << "BYTES REMAINING:" << bytes_remaining << std::endl;
+
+            if (bytes_remaining > comment_i_len) {
+              std::string user_comment_i(
+                  buffer.begin() + buffer_idx,
+                  buffer.begin() + buffer_idx + comment_i_len);
+              std::cout << "COMMENT:" << i << user_comment_i << std::endl;
+
+              buffer_idx += vendor_string_len;
+              bytes_remaining = buffer.size() - buffer_idx;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 void DecodeOggPage(int page_num, std::vector<unsigned char> page) {
   // https://datatracker.ietf.org/doc/html/rfc7845
   // page #0 should only contain ID Header
@@ -62,17 +125,17 @@ void DecodeOggPage(int page_num, std::vector<unsigned char> page) {
 void DecodeOggStream(std::vector<unsigned char>& buffer) {
   int idx = 0;
   int current_page = 0;
-
   bool have_header_page = false;
   bool have_comment_page = false;
 
   while (idx < buffer.size()) {
+    std::cout << "\n\nIDX:" << idx << std::endl;
     int bytes_remaining = buffer.size() - idx;
 
     if (bytes_remaining > kMinHeaderSize) {
       // STEP 1 - identify page
       if (MatchesPattern(kOggCapturePattern, buffer, idx)) {
-        std::cout << "\n\nPAGE:" << current_page << std::endl;
+        std::cout << "PAGE:" << current_page << std::endl;
 
         std::stringstream ss_bs;
         ss_bs << std::hex << static_cast<unsigned int>(buffer[idx + 17])
@@ -116,11 +179,6 @@ void DecodeOggStream(std::vector<unsigned char>& buffer) {
         std::cout << "PAGE #:" << current_page << " is " << total_page_size
                   << " bytes." << std::endl;
 
-        if (MatchesPattern(kOpusIdHeader, buffer, data_start_idx)) {
-          std::cout << "WOOOOP OP!\n";
-        }
-        std::cout << "fistpage:?" << is_first_page_of_bitstream
-                  << " current page:" << current_page << std::endl;
         if (is_first_page_of_bitstream && current_page == 0 &&
             MatchesPattern(kOpusIdHeader, buffer, data_start_idx)) {
           std::cout << "**HEADER IDX!\n";
@@ -129,6 +187,7 @@ void DecodeOggStream(std::vector<unsigned char>& buffer) {
                    MatchesPattern(kOpusCommentHeader, buffer, data_start_idx)) {
           std::cout << "**COMMENT IDX!\n";
           have_comment_page = true;
+          DecodeComments(buffer, data_start_idx);
         } else {  // data pages
           std::cout << "**DATA PAGES!\n";
         }
