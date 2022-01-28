@@ -1,5 +1,7 @@
-#include <portaudio.h>
+#include <opus/opus.h>
+#include <sndfile.h>
 
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -26,6 +28,11 @@
 //   'Beginning Of Stream'
 
 const std::string testfile("gaborNote.opus");
+const int kBufferSize = 256;
+const int kMaxFrameSize = 6 * 960;
+
+#define MAX_FRAME_SIZE 6 * 960
+#define MAX_PACKET_SIZE (3 * 1276)
 
 ////////////////////////////////////////////////////////////
 // CONST VARS
@@ -183,7 +190,65 @@ bool DecodeComments(const std::vector<unsigned char>& buffer, int buffer_idx) {
 bool DecodeOpusPacket(const std::vector<unsigned char>& buffer,
                       int buffer_idx) {
   int bytes_remaining = buffer.size() - buffer_idx;
+  std::cout << "OPPPPPPUUUUUS - bytes remaining:" << bytes_remaining << "\n";
+
   if (bytes_remaining > 1) {
+    OpusDecoder* decoder;
+    int err;
+    SF_INFO sfinfo{0};
+    sfinfo.samplerate = 48000;
+    sfinfo.channels = 2;
+    sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+
+    SNDFILE* outwav = sf_open("test.wav", SFM_WRITE, &sfinfo);
+    if (!outwav) {
+      int err = sf_error(outwav);
+      std::cerr << "DIDNT OPEN?" << err << "\n";
+      exit(1);
+    }
+
+    decoder = opus_decoder_create(48000, 2, &err);
+    if (err < 0) {
+      fprintf(stderr, "failed to create decoder: %s\n", opus_strerror(err));
+      return EXIT_FAILURE;
+    }
+
+    // std::array<float, kMaxFrameSize * 2> decoded_buffer{0};
+
+    // float decoded_buffer[kMaxFrameSize * 2] = {};
+    opus_int16 decoded_buffer[kMaxFrameSize * 4] = {};
+
+    sf_count_t bytes_wrote = 0;
+    sf_count_t frames_read = 0;
+
+    unsigned char cbits[MAX_PACKET_SIZE];
+
+    int frame_size = opus_decode(decoder, &buffer[buffer_idx], bytes_remaining,
+                                 decoded_buffer, kMaxFrameSize * 2, 0);
+    if (frame_size < 0) {
+      fprintf(stderr, "decoder failed: %d  %s\n", frame_size,
+              opus_strerror(frame_size));
+      return EXIT_FAILURE;
+    }
+
+    std::cout << "OPUSDEEEEEECODEDDDDDD!\n";
+
+    // while (1) {
+    //  // read from of into buffer;
+    //  frames_read = op_read_float_stereo(of, buffer.begin(), kBufferSize);
+    //  std::cout << "WRITING " << frames_read << std::endl;
+    //  if (frames_read <= 0) {
+    //    std::cerr << "NAE MAIR FRAMES!\n";
+    //    break;
+    //  }
+    //  // write buffer into outwav
+    // bytes_wrote = sf_writef_float(outwav, decoded_buffer.begin(),
+    // frame_size); std::cout << "WROTE " << bytes_wrote << " to " << outwav <<
+    // std::endl;
+    //}
+
+    // op_free(of);
+    // sf_close(outwav);
     return true;
   }
 
