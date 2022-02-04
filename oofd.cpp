@@ -196,18 +196,6 @@ bool DecodeOpusPacket(const std::vector<unsigned char>& buffer, int buffer_idx,
   if (bytes_remaining > 1) {
     OpusDecoder* decoder;
     int err;
-    SF_INFO sfinfo{0};
-    sfinfo.samplerate = 48000;
-    sfinfo.channels = 2;
-    sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
-
-    SNDFILE* outwav = sf_open("test.wav", SFM_WRITE, &sfinfo);
-    if (!outwav) {
-      int err = sf_error(outwav);
-      std::cerr << "DIDNT OPEN?" << err << "\n";
-      exit(1);
-    }
-
     decoder = opus_decoder_create(48000, 2, &err);
     if (err < 0) {
       fprintf(stderr, "failed to create decoder: %s\n", opus_strerror(err));
@@ -216,11 +204,10 @@ bool DecodeOpusPacket(const std::vector<unsigned char>& buffer, int buffer_idx,
 
     // std::array<float, kMaxFrameSize * 2> decoded_buffer{0};
 
-    while (bytes_remaining < buffer.size()) {
-      // float decoded_buffer[kMaxFrameSize * 2] = {};
+    for (auto s : packet_sizes) {
       opus_int16 decoded_buffer[960 * 2] = {};
-      int frame_size = opus_decode(decoder, &buffer[buffer_idx],
-                                   bytes_remaining, decoded_buffer, 960, 0);
+      int frame_size =
+          opus_decode(decoder, &buffer[buffer_idx], s, decoded_buffer, 960, 0);
       if (frame_size < 0) {
         fprintf(stderr, "decoder failed: %d  %s\n", frame_size,
                 opus_strerror(frame_size));
@@ -230,10 +217,22 @@ bool DecodeOpusPacket(const std::vector<unsigned char>& buffer, int buffer_idx,
         return EXIT_FAILURE;
       }
 
-      std::cout << "OPUSDEEEEEECODEDDDDDD!\n";
-      buffer_idx += frame_size;
+      std::cout << "OPUSDEEEEEECODEDDDDDD! " << frame_size << " frames!\n";
+      buffer_idx += s;
       bytes_remaining = buffer.size() - buffer_idx;
     }
+
+    // SF_INFO sfinfo{0};
+    // sfinfo.samplerate = 48000;
+    // sfinfo.channels = 2;
+    // sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+
+    // SNDFILE* outwav = sf_open("test.wav", SFM_WRITE, &sfinfo);
+    // if (!outwav) {
+    //  int err = sf_error(outwav);
+    //  std::cerr << "DIDNT OPEN?" << err << "\n";
+    //  exit(1);
+    //}
 
     // sf_count_t bytes_wrote = 0;
     // sf_count_t frames_read = 0;
