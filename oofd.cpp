@@ -202,57 +202,44 @@ bool DecodeOpusPacket(const std::vector<unsigned char>& buffer, int buffer_idx,
       return EXIT_FAILURE;
     }
 
-    // std::array<float, kMaxFrameSize * 2> decoded_buffer{0};
+    SF_INFO sfinfo{0};
+    sfinfo.samplerate = 48000;
+    sfinfo.channels = 2;
+    sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
 
+    SNDFILE* outwav = sf_open("test.wav", SFM_WRITE, &sfinfo);
+    if (!outwav) {
+      int err = sf_error(outwav);
+      std::cerr << "DIDNT OPEN?" << err << "\n";
+      exit(1);
+    }
+
+    sf_count_t bytes_wrote = 0;
+    int frames_read = 0;
     for (auto s : packet_sizes) {
-      opus_int16 decoded_buffer[960 * 2] = {};
-      int frame_size =
-          opus_decode(decoder, &buffer[buffer_idx], s, decoded_buffer, 960, 0);
-      if (frame_size < 0) {
-        fprintf(stderr, "decoder failed: %d  %s\n", frame_size,
-                opus_strerror(frame_size));
-        if (frame_size == OPUS_BUFFER_TOO_SMALL) {
+      float decoded_buffer[960 * 2] = {};
+      frames_read = opus_decode_float(decoder, &buffer[buffer_idx], s,
+                                      decoded_buffer, 960, 0);
+      if (frames_read < 0) {
+        fprintf(stderr, "decoder failed: %d  %s\n", frames_read,
+                opus_strerror(frames_read));
+        if (frames_read == OPUS_BUFFER_TOO_SMALL) {
           std::cout << "TOO WEE!\n";
         }
         return EXIT_FAILURE;
       }
 
-      std::cout << "OPUSDEEEEEECODEDDDDDD! " << frame_size << " frames!\n";
+      std::cout << "OPUSDEEEEEECODEDDDDDD! " << frames_read << " frames!\n";
       buffer_idx += s;
       bytes_remaining = buffer.size() - buffer_idx;
+
+      bytes_wrote = sf_writef_float(outwav, decoded_buffer, frames_read);
+      std::cout << "WROTE " << bytes_wrote << " to " << outwav << std::endl;
     }
 
-    // SF_INFO sfinfo{0};
-    // sfinfo.samplerate = 48000;
-    // sfinfo.channels = 2;
-    // sfinfo.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+    opus_decoder_destroy(decoder);
+    sf_close(outwav);
 
-    // SNDFILE* outwav = sf_open("test.wav", SFM_WRITE, &sfinfo);
-    // if (!outwav) {
-    //  int err = sf_error(outwav);
-    //  std::cerr << "DIDNT OPEN?" << err << "\n";
-    //  exit(1);
-    //}
-
-    // sf_count_t bytes_wrote = 0;
-    // sf_count_t frames_read = 0;
-
-    // while (1) {
-    //  // read from of into buffer;
-    //  frames_read = op_read_float_stereo(of, buffer.begin(), kBufferSize);
-    //  std::cout << "WRITING " << frames_read << std::endl;
-    //  if (frames_read <= 0) {
-    //    std::cerr << "NAE MAIR FRAMES!\n";
-    //    break;
-    //  }
-    //  // write buffer into outwav
-    // bytes_wrote = sf_writef_float(outwav, decoded_buffer.begin(),
-    // frame_size); std::cout << "WROTE " << bytes_wrote << " to " << outwav <<
-    // std::endl;
-    //}
-
-    // op_free(of);
-    // sf_close(outwav);
     return true;
   }
 
