@@ -187,10 +187,11 @@ bool DecodeComments(const std::vector<unsigned char>& buffer, int buffer_idx) {
 
 /////////////////////////////////////////////////////////////////////////
 
-bool DecodeOpusPacket(const std::vector<unsigned char>& buffer,
-                      int buffer_idx) {
+bool DecodeOpusPacket(const std::vector<unsigned char>& buffer, int buffer_idx,
+                      const std::vector<int>& packet_sizes) {
   int bytes_remaining = buffer.size() - buffer_idx;
-  std::cout << "OPPPPPPUUUUUS - bytes remaining:" << bytes_remaining << "\n";
+  std::cout << "OPPPPPPUUUUUS - bytes remaining:" << bytes_remaining << " in "
+            << packet_sizes.size() << " packets\n";
 
   if (bytes_remaining > 1) {
     OpusDecoder* decoder;
@@ -215,23 +216,27 @@ bool DecodeOpusPacket(const std::vector<unsigned char>& buffer,
 
     // std::array<float, kMaxFrameSize * 2> decoded_buffer{0};
 
-    // float decoded_buffer[kMaxFrameSize * 2] = {};
-    opus_int16 decoded_buffer[kMaxFrameSize * 4] = {};
+    while (bytes_remaining < buffer.size()) {
+      // float decoded_buffer[kMaxFrameSize * 2] = {};
+      opus_int16 decoded_buffer[960 * 2] = {};
+      int frame_size = opus_decode(decoder, &buffer[buffer_idx],
+                                   bytes_remaining, decoded_buffer, 960, 0);
+      if (frame_size < 0) {
+        fprintf(stderr, "decoder failed: %d  %s\n", frame_size,
+                opus_strerror(frame_size));
+        if (frame_size == OPUS_BUFFER_TOO_SMALL) {
+          std::cout << "TOO WEE!\n";
+        }
+        return EXIT_FAILURE;
+      }
 
-    sf_count_t bytes_wrote = 0;
-    sf_count_t frames_read = 0;
-
-    unsigned char cbits[MAX_PACKET_SIZE];
-
-    int frame_size = opus_decode(decoder, &buffer[buffer_idx], bytes_remaining,
-                                 decoded_buffer, kMaxFrameSize * 2, 0);
-    if (frame_size < 0) {
-      fprintf(stderr, "decoder failed: %d  %s\n", frame_size,
-              opus_strerror(frame_size));
-      return EXIT_FAILURE;
+      std::cout << "OPUSDEEEEEECODEDDDDDD!\n";
+      buffer_idx += frame_size;
+      bytes_remaining = buffer.size() - buffer_idx;
     }
 
-    std::cout << "OPUSDEEEEEECODEDDDDDD!\n";
+    // sf_count_t bytes_wrote = 0;
+    // sf_count_t frames_read = 0;
 
     // while (1) {
     //  // read from of into buffer;
@@ -297,9 +302,17 @@ void DecodeOggStream(std::vector<unsigned char>& buffer) {
         int data_start_idx = idx + kMinHeaderSize + num_page_segments;
 
         int total_data_size_bytes = 0;
+        std::vector<int> packet_sizes;
+        int current_size = 0;
         for (int i = 0; i < num_page_segments; i++) {
           int lacing_val =
               static_cast<unsigned int>(buffer[idx + kMinHeaderSize + i]);
+          current_size += lacing_val;
+          if (lacing_val < 255) {
+            packet_sizes.push_back(current_size);
+            current_size = 0;
+          }
+          std::cout << "LACING VAL:" << lacing_val << std::endl;
           total_data_size_bytes += lacing_val;
         }
 
@@ -328,7 +341,7 @@ void DecodeOggStream(std::vector<unsigned char>& buffer) {
           }
         } else if (have_comment_page) {  // data pages
           std::cout << "**DATA PAGES!\n";
-          if (DecodeOpusPacket(buffer, data_start_idx)) {
+          if (DecodeOpusPacket(buffer, data_start_idx, packet_sizes)) {
           }
         }
 
